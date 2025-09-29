@@ -1,12 +1,17 @@
 import requests, time, math
 import csv
 from datetime import datetime
+from twilio.rest import Client
 
 TB_URL = "http://3.91.187.172:8080"
 from dotenv import dotenv_values
 env = dotenv_values(".env")
 USERNAME = env.get("USERNAME")
 PASSWORD = env.get("PASSWORD")
+TWILIO_SID = env.get("TWILIO_SID")
+TWILIO_AUTH = env.get("TWILIO_AUTH")
+TWILIO_FROM = env.get("TWILIO_FROM")
+twilio = Client(TWILIO_SID, TWILIO_AUTH)
 DEVICES = {
     "DeviceA": "8f60fa90-9bec-11f0-bb3b-79d8a63f8f5f",
     "DeviceB": "950586b0-9b7d-11f0-b5de-8f27bbc7c18b"
@@ -39,7 +44,7 @@ def recap(trail):
         f"Time span: {datetime.fromtimestamp(start['ts']/1000).strftime(fmt)} → "
         f"{datetime.fromtimestamp(end['ts']/1000).strftime(fmt)}\n"
         f"Total distance traveled: {total_km:.2f} km\n"
-    )
+    ), total_km
 
 if __name__ == "__main__":
     # login
@@ -51,12 +56,22 @@ if __name__ == "__main__":
     end_ts = int(time.time() * 1000)
     start_ts = end_ts - 24*60*60*1000
 
+    distances = {}
     for name, dev_id in DEVICES.items():
         trail = fetch_trail(dev_id, headers, start_ts, end_ts)
         print(f"=== {name} ===")
-        print(recap(trail))
+        recap_text, total_km = recap(trail)
+        print(recap_text)
+        distances[name] = total_km
         # Save trail to CSV
         with open(f"{name}.csv", "w", newline="") as csvfile:
             writer = csv.DictWriter(csvfile, fieldnames=["ts", "lat", "lon"])
             writer.writeheader()
             writer.writerows(trail)
+
+    if distances.get("DeviceB", 0) > distances.get("DeviceA", 0):
+        twilio.messages.create(
+            body="You lost",
+            from_=TWILIO_FROM,
+            to="+13104289705"
+        )
